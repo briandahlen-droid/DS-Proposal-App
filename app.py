@@ -1,15 +1,18 @@
 """
-Development Services - Master Services Agreement IPO Generator
-Streamlit web application for generating Individual Project Order documents
-Complete single-file application
+Development Services Proposal Generator
+Streamlit web application for generating professional proposal documents
+With Kimley-Horn header and footer
 """
 
 import streamlit as st
 from datetime import date
 from io import BytesIO
 from docx import Document
-from docx.shared import Inches, Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
+from docx.shared import Inches, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_ROW_HEIGHT_RULE, WD_CELL_VERTICAL_ALIGNMENT
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
 # ============================================================================
 # TASK DESCRIPTIONS DATABASE
@@ -72,206 +75,302 @@ TASK_DESCRIPTIONS = {
 # DOCUMENT GENERATION FUNCTIONS
 # ============================================================================
 
-def add_title_section(doc, project_name, ipo_number):
-    """Add title section at top of document."""
+def set_cell_background(cell, color_hex):
+    """Set cell background color."""
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    existing_shd = tcPr.find(qn('w:shd'))
+    if existing_shd is not None:
+        tcPr.remove(existing_shd)
+    shd = OxmlElement('w:shd')
+    shd.set(qn('w:val'), 'clear')
+    shd.set(qn('w:color'), 'auto')
+    shd.set(qn('w:fill'), color_hex)
+    tcPr.append(shd)
+
+
+def set_cell_margins(cell, top=20, bottom=20, start=40, end=40):
+    """Set cell margins in twips."""
+    tc = cell._tc
+    tcPr = tc.get_or_add_tcPr()
+    existing = tcPr.find(qn('w:tcMar'))
+    if existing is not None:
+        tcPr.remove(existing)
+    tcMar = OxmlElement('w:tcMar')
+    for margin_name, value in [('top', top), ('bottom', bottom), ('start', start), ('end', end)]:
+        margin = OxmlElement(f'w:{margin_name}')
+        margin.set(qn('w:w'), str(value))
+        margin.set(qn('w:type'), 'dxa')
+        tcMar.append(margin)
+    tcPr.append(tcMar)
+
+
+def remove_table_borders(table):
+    """Remove all borders from table."""
+    tbl = table._tbl
+    tblPr = tbl.tblPr
+    if tblPr is None:
+        tblPr = OxmlElement('w:tblPr')
+        tbl.insert(0, tblPr)
+    existing = tblPr.find(qn('w:tblBorders'))
+    if existing is not None:
+        tblPr.remove(existing)
+    tblBorders = OxmlElement('w:tblBorders')
+    for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
+        border = OxmlElement(f'w:{border_name}')
+        border.set(qn('w:val'), 'nil')
+        tblBorders.append(border)
+    tblPr.append(tblBorders)
+
+
+def create_header(section):
+    """Create Kimley-Horn header."""
+    header = section.header
+    header.is_linked_to_previous = False
     
-    # Main title - BOLD, CENTERED, 12pt
+    header_table = header.add_table(rows=1, cols=2, width=Inches(6.5))
+    header_table.autofit = False
+    header_table.columns[0].width = Inches(5.0)
+    header_table.columns[1].width = Inches(1.5)
+    
+    tbl = header_table._tbl
+    tblPr = tbl.tblPr if tbl.tblPr is not None else OxmlElement('w:tblPr')
+    tblBorders = OxmlElement('w:tblBorders')
+    for border_name in ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']:
+        border = OxmlElement(f'w:{border_name}')
+        border.set(qn('w:val'), 'none')
+        tblBorders.append(border)
+    tblPr.append(tblBorders)
+    if tbl.tblPr is None:
+        tbl.insert(0, tblPr)
+    
+    logo_cell = header_table.cell(0, 0)
+    logo_cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+    logo_para = logo_cell.paragraphs[0]
+    logo_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    logo_para.clear()
+    
+    run1 = logo_para.add_run("Kimley")
+    run1.font.size = Pt(28)
+    run1.font.bold = False
+    run1.font.color.rgb = RGBColor(88, 89, 91)
+    run1.font.name = 'Arial Narrow'
+    
+    run2 = logo_para.add_run("»")
+    run2.font.size = Pt(28)
+    run2.font.bold = False
+    run2.font.color.rgb = RGBColor(88, 89, 91)
+    run2.font.name = 'Arial Narrow'
+    
+    run3 = logo_para.add_run("Horn")
+    run3.font.size = Pt(28)
+    run3.font.bold = False
+    run3.font.color.rgb = RGBColor(166, 25, 46)
+    run3.font.name = 'Arial Narrow'
+    
+    page_cell = header_table.cell(0, 1)
+    page_cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+    page_para = page_cell.paragraphs[0]
+    page_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    
+    run = page_para.add_run('Page ')
+    run.font.name = 'Arial'
+    run.font.size = Pt(11)
+    run.font.italic = True
+    run.font.color.rgb = RGBColor(0, 0, 0)
+    
+    fldChar1 = OxmlElement('w:fldChar')
+    fldChar1.set(qn('w:fldCharType'), 'begin')
+    instrText = OxmlElement('w:instrText')
+    instrText.set(qn('xml:space'), 'preserve')
+    instrText.text = 'PAGE'
+    fldChar2 = OxmlElement('w:fldChar')
+    fldChar2.set(qn('w:fldCharType'), 'end')
+    run._r.append(fldChar1)
+    run._r.append(instrText)
+    run._r.append(fldChar2)
+
+
+def create_footer(section):
+    """Create Kimley-Horn footer."""
+    footer = section.footer
+    footer.is_linked_to_previous = False
+    
+    widths = [Inches(1.1), Inches(0.01), Inches(4.23), Inches(0.01), Inches(0.96)]
+    colors = ['5F5F5F', None, 'A20C33', None, 'A20C33']
+    texts = ['kimley-horn.com', '', '200 Central Avenue Suite 600 St. Petersburg, FL 33701', '', '(727) 822-5150']
+    
+    table = footer.add_table(rows=1, cols=5, width=sum(widths))
+    table.allow_autofit = False
+    remove_table_borders(table)
+    
+    row = table.rows[0]
+    row.height = Inches(0.22)
+    row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
+    
+    for idx, cell in enumerate(row.cells):
+        table.columns[idx].width = widths[idx]
+        cell.width = widths[idx]
+        
+        if colors[idx]:
+            set_cell_background(cell, colors[idx])
+        
+        set_cell_margins(cell, top=20, bottom=20, start=40, end=40)
+        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+        
+        if texts[idx]:
+            para = cell.paragraphs[0]
+            para.paragraph_format.space_before = Pt(0)
+            para.paragraph_format.space_after = Pt(0)
+            para.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            para.clear()
+            
+            run = para.add_run(texts[idx])
+            run.font.name = 'Arial'
+            run.font.size = Pt(8)
+            run.font.color.rgb = RGBColor(255, 255, 255)
+
+
+def add_opening_section(doc, client_info, project_info):
+    """Add opening section."""
+    
+    date_para = doc.add_paragraph()
+    date_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    run = date_para.add_run(project_info['date'])
+    run.font.name = 'Arial'
+    run.font.size = Pt(11)
+    date_para.paragraph_format.space_after = Pt(0)
+    date_para.paragraph_format.line_spacing = 1.0
+    
+    doc.add_paragraph()
+    
     para = doc.add_paragraph()
-    run = para.add_run(project_name.upper())
-    run.font.name = 'Calibri'
-    run.font.size = Pt(12)
+    run = para.add_run(client_info['contact'])
+    run.font.name = 'Arial'
+    run.font.size = Pt(11)
+    para.paragraph_format.space_after = Pt(0)
+    para.paragraph_format.line_spacing = 1.0
+    
+    para = doc.add_paragraph()
+    run = para.add_run(client_info['name'])
+    run.font.name = 'Arial'
+    run.font.size = Pt(11)
+    para.paragraph_format.space_after = Pt(0)
+    para.paragraph_format.line_spacing = 1.0
+    
+    para = doc.add_paragraph()
+    run = para.add_run(client_info['address1'])
+    run.font.name = 'Arial'
+    run.font.size = Pt(11)
+    para.paragraph_format.space_after = Pt(0)
+    para.paragraph_format.line_spacing = 1.0
+    
+    para = doc.add_paragraph()
+    run = para.add_run(client_info['address2'])
+    run.font.name = 'Arial'
+    run.font.size = Pt(11)
+    para.paragraph_format.space_after = Pt(0)
+    para.paragraph_format.line_spacing = 1.0
+    
+    doc.add_paragraph()
+    
+    para = doc.add_paragraph()
+    run = para.add_run('Re:\tProfessional Services Agreement')
+    run.font.name = 'Arial'
+    run.font.size = Pt(11)
+    para.paragraph_format.space_after = Pt(0)
+    para.paragraph_format.line_spacing = 1.0
+    
+    para = doc.add_paragraph()
+    run = para.add_run(f'\t{project_info["name"]}')
+    run.font.name = 'Arial'
+    run.font.size = Pt(11)
+    para.paragraph_format.space_after = Pt(0)
+    para.paragraph_format.line_spacing = 1.0
+    
+    doc.add_paragraph()
+    
+    para = doc.add_paragraph()
+    run = para.add_run(f'Dear {client_info["contact"].split()[0]} {client_info["contact"].split()[-1]}:')
+    run.font.name = 'Arial'
+    run.font.size = Pt(11)
     run.font.bold = True
+    para.paragraph_format.space_after = Pt(0)
+    para.paragraph_format.line_spacing = 1.0
+    
+    doc.add_paragraph()
+    
+    para = doc.add_paragraph()
+    opening_text = f'Kimley-Horn and Associates, Inc. ("Kimley-Horn" or "Consultant") is pleased to submit this Professional Services Agreement ("Agreement") to {client_info["name"]} ("Client") for professional services for the {project_info["name"]} ("Project").'
+    run = para.add_run(opening_text)
+    run.font.name = 'Arial'
+    run.font.size = Pt(11)
+    run.font.bold = True
+    para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    para.paragraph_format.space_after = Pt(0)
+    para.paragraph_format.line_spacing = 1.0
+    
+    doc.add_paragraph()
+
+
+def add_project_understanding(doc, project_description):
+    """Add Project Understanding section."""
+    
+    para = doc.add_paragraph()
+    run = para.add_run('PROJECT UNDERSTANDING')
+    run.font.name = 'Arial'
+    run.font.size = Pt(11)
     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     para.paragraph_format.space_after = Pt(0)
     para.paragraph_format.line_spacing = 1.0
     
-    # IPO subtitle - BOLD, CENTERED, 10pt
-    para = doc.add_paragraph()
-    run = para.add_run(f'INDIVIDUAL PROJECT ORDER NUMBER {ipo_number}')
-    run.font.name = 'Calibri'
-    run.font.size = Pt(10)
-    run.font.bold = True
-    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    para.paragraph_format.space_after = Pt(0)
-    para.paragraph_format.line_spacing = 1.0
-    
-    # Blank lines
     doc.add_paragraph()
-    doc.add_paragraph()
-
-
-def add_opening_paragraph(doc, client_name, master_agreement_date):
-    """Add opening paragraph with master agreement reference."""
     
     para = doc.add_paragraph()
-    run = para.add_run(
-        f'Describing a specific agreement between Kimley-Horn and Associates, Inc. '
-        f'(the Consultant), and {client_name} (the Client) in accordance with the terms of the '
-        f'Master Agreement for Continuing Professional Services dated {master_agreement_date}, '
-        f'which is incorporated herein by reference.'
-    )
-    run.font.name = 'Calibri'
+    run = para.add_run(project_description)
+    run.font.name = 'Arial'
     run.font.size = Pt(11)
     para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     para.paragraph_format.space_after = Pt(0)
     para.paragraph_format.line_spacing = 1.0
     
-    # Blank line
     doc.add_paragraph()
-
-
-def add_project_identification(doc, project_name, project_name_line2, project_manager, project_number):
-    """Add Identification of Project section."""
-    
-    # Section heading - BOLD + UNDERLINED
-    para = doc.add_paragraph()
-    run = para.add_run('Identification of Project:')
-    run.font.name = 'Calibri'
-    run.font.size = Pt(11)
-    run.font.bold = True
-    run.font.underline = True
-    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    para.paragraph_format.space_after = Pt(0)
-    para.paragraph_format.line_spacing = 1.0
-    
-    # Blank line
-    doc.add_paragraph()
-    
-    # Project Name - BOLD, with tab alignment at 2.5"
-    para = doc.add_paragraph()
-    tab_stops = para.paragraph_format.tab_stops
-    tab_stops.add_tab_stop(Inches(2.5), WD_TAB_ALIGNMENT.LEFT)
-    
-    run = para.add_run('Project Name:\t')
-    run.font.name = 'Calibri'
-    run.font.size = Pt(11)
-    run.font.bold = True
-    
-    run = para.add_run(project_name)
-    run.font.name = 'Calibri'
-    run.font.size = Pt(11)
-    run.font.bold = True
-    
-    para.paragraph_format.space_after = Pt(0)
-    para.paragraph_format.line_spacing = 1.0
-    
-    # Second line of project name (if provided)
-    if project_name_line2:
-        para = doc.add_paragraph()
-        tab_stops = para.paragraph_format.tab_stops
-        tab_stops.add_tab_stop(Inches(2.5), WD_TAB_ALIGNMENT.LEFT)
-        
-        run = para.add_run('\t')
-        run = para.add_run(project_name_line2)
-        run.font.name = 'Calibri'
-        run.font.size = Pt(11)
-        run.font.bold = True
-        
-        para.paragraph_format.space_after = Pt(0)
-        para.paragraph_format.line_spacing = 1.0
-    
-    # KH Project Manager
-    para = doc.add_paragraph()
-    tab_stops = para.paragraph_format.tab_stops
-    tab_stops.add_tab_stop(Inches(2.5), WD_TAB_ALIGNMENT.LEFT)
-    
-    run = para.add_run('KH Project Manager:\t')
-    run.font.name = 'Calibri'
-    run.font.size = Pt(11)
-    run.font.bold = True
-    
-    run = para.add_run(project_manager)
-    run.font.name = 'Calibri'
-    run.font.size = Pt(11)
-    run.font.bold = True
-    
-    para.paragraph_format.space_after = Pt(0)
-    para.paragraph_format.line_spacing = 1.0
-    
-    # Project Number
-    para = doc.add_paragraph()
-    tab_stops = para.paragraph_format.tab_stops
-    tab_stops.add_tab_stop(Inches(2.5), WD_TAB_ALIGNMENT.LEFT)
-    
-    run = para.add_run('Project Number:\t')
-    run.font.name = 'Calibri'
-    run.font.size = Pt(11)
-    run.font.bold = True
-    
-    run = para.add_run(project_number)
-    run.font.name = 'Calibri'
-    run.font.size = Pt(11)
-    run.font.bold = True
-    
-    para.paragraph_format.space_after = Pt(0)
-    para.paragraph_format.line_spacing = 1.0
-    
-    # Blank line
-    doc.add_paragraph()
-
-
-def add_section_with_heading(doc, heading_text, content_paragraphs):
-    """Add a section with BOLD+UNDERLINED heading and content paragraphs."""
-    
-    # Section heading
-    para = doc.add_paragraph()
-    run = para.add_run(heading_text)
-    run.font.name = 'Calibri'
-    run.font.size = Pt(11)
-    run.font.bold = True
-    run.font.underline = True
-    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-    para.paragraph_format.space_after = Pt(0)
-    para.paragraph_format.line_spacing = 1.0
-    
-    # Blank line
-    doc.add_paragraph()
-    
-    # Content paragraphs
-    for content in content_paragraphs:
-        para = doc.add_paragraph()
-        run = para.add_run(content)
-        run.font.name = 'Calibri'
-        run.font.size = Pt(11)
-        para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        para.paragraph_format.space_after = Pt(0)
-        para.paragraph_format.line_spacing = 1.0
-        
-        # Blank line after paragraph
-        doc.add_paragraph()
 
 
 def add_scope_of_services(doc, selected_tasks):
-    """Add Specific scope of basic Services section with tasks."""
+    """Add Scope of Services section."""
     
-    # Section heading
     para = doc.add_paragraph()
-    run = para.add_run('Specific scope of basic Services:')
-    run.font.name = 'Calibri'
+    run = para.add_run('Scope of Services')
+    run.font.name = 'Arial'
     run.font.size = Pt(11)
-    run.font.bold = True
-    run.font.underline = True
-    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     para.paragraph_format.space_after = Pt(0)
     para.paragraph_format.line_spacing = 1.0
     
-    # Blank line
     doc.add_paragraph()
     
-    # Sub-section keywords for italic formatting
+    para = doc.add_paragraph()
+    run = para.add_run('Kimley-Horn will provide the services specifically set forth below.')
+    run.font.name = 'Arial'
+    run.font.size = Pt(11)
+    para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    para.paragraph_format.space_after = Pt(0)
+    para.paragraph_format.line_spacing = 1.0
+    
+    doc.add_paragraph()
+    
     sub_section_keywords = ['cover sheet', 'utility plan', 'site layout', 'site plan',
                            'grading plan', 'drainage plan', 'paving', 'erosion control',
                            'detail', 'existing conditions', 'demolition']
     
-    # Add each selected task
     for task_num in sorted(selected_tasks.keys()):
         task = selected_tasks[task_num]
         descriptions = TASK_DESCRIPTIONS[task_num]
         
-        # Task heading - BOLD + UNDERLINED
         para = doc.add_paragraph()
         run = para.add_run(f'Task {task_num} – {task["name"].replace("Civil ", "")}')
-        run.font.name = 'Calibri'
+        run.font.name = 'Arial'
         run.font.size = Pt(11)
         run.font.bold = True
         run.font.underline = True
@@ -279,23 +378,19 @@ def add_scope_of_services(doc, selected_tasks):
         para.paragraph_format.space_after = Pt(0)
         para.paragraph_format.line_spacing = 1.0
         
-        # Blank line after task heading
         doc.add_paragraph()
         
-        # Task description paragraphs
         for desc in descriptions:
             para = doc.add_paragraph()
             
-            # Check if sub-section heading
             is_subsection = (len(desc) < 100 and 
                            any(kw in desc.lower() for kw in sub_section_keywords) and
                            not desc.endswith('.'))
             
             run = para.add_run(desc)
-            run.font.name = 'Calibri'
+            run.font.name = 'Arial'
             run.font.size = Pt(11)
             
-            # Apply ITALIC for sub-section headings
             if is_subsection:
                 run.font.italic = True
             
@@ -303,70 +398,83 @@ def add_scope_of_services(doc, selected_tasks):
             para.paragraph_format.space_after = Pt(0)
             para.paragraph_format.line_spacing = 1.0
             
-            # Only add blank line if NOT a sub-section heading
             if not is_subsection:
                 doc.add_paragraph()
 
 
-def add_simple_footer(doc, footer_text="rev 07/2024"):
-    """Add simple footer text."""
-    section = doc.sections[0]
-    footer = section.footer
+def add_scope_table(doc, selected_tasks):
+    """Add Scope of Work table."""
     
-    para = footer.paragraphs[0]
-    para.text = footer_text
-    run = para.runs[0]
-    run.font.name = 'Calibri'
-    run.font.size = Pt(9)
-    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    total_fee = sum(task['fee'] for task in selected_tasks.values())
+    
+    num_rows = len(selected_tasks) + 2
+    table = doc.add_table(rows=num_rows, cols=4)
+    table.style = 'Light Grid Accent 1'
+    
+    header_cells = table.rows[0].cells
+    header_cells[0].text = 'Task Number & Name'
+    header_cells[1].text = 'Task Number & Name'
+    header_cells[2].text = 'Fee'
+    header_cells[3].text = 'Type'
+    
+    for cell in header_cells:
+        cell.paragraphs[0].runs[0].font.bold = True
+        cell.paragraphs[0].runs[0].font.size = Pt(11)
+        cell.paragraphs[0].runs[0].font.name = 'Arial'
+    
+    for idx, (task_num, task) in enumerate(sorted(selected_tasks.items()), start=1):
+        row = table.rows[idx]
+        row.cells[0].text = task_num
+        row.cells[1].text = task['name']
+        row.cells[2].text = f'$ {task["fee"]:,}'
+        row.cells[3].text = task['type']
+        
+        for cell in row.cells:
+            cell.paragraphs[0].runs[0].font.size = Pt(11)
+            cell.paragraphs[0].runs[0].font.name = 'Arial'
+    
+    total_row = table.rows[-1]
+    total_row.cells[0].text = 'Total'
+    total_row.cells[1].text = 'Total'
+    total_row.cells[2].text = f'$ {total_fee:,}'
+    total_row.cells[3].text = f'$ {total_fee:,}'
+    
+    for cell in total_row.cells:
+        cell.paragraphs[0].runs[0].font.bold = True
+        cell.paragraphs[0].runs[0].font.size = Pt(11)
+        cell.paragraphs[0].runs[0].font.name = 'Arial'
+    
+    doc.add_paragraph()
+    
+    task_list = ', '.join(sorted(selected_tasks.keys()))
+    para = doc.add_paragraph()
+    run = para.add_run(f'Kimley-Horn will perform the services in Tasks {task_list} on a labor fee plus expense basis with the maximum labor fee shown above.')
+    run.font.name = 'Arial'
+    run.font.size = Pt(11)
+    para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    para.paragraph_format.space_after = Pt(0)
+    para.paragraph_format.line_spacing = 1.0
 
 
-def generate_msa_ipo_document(project_info, client_info, selected_tasks, output_path):
-    """Generate Master Services Agreement IPO document."""
+def generate_proposal_document(client_info, project_info, selected_tasks, output_path):
+    """Generate complete proposal document."""
     
     doc = Document()
     
-    # Set margins
     section = doc.sections[0]
     section.top_margin = Inches(1.0)
     section.bottom_margin = Inches(1.0)
     section.left_margin = Inches(1.0)
     section.right_margin = Inches(1.0)
     
-    # Add document sections
-    add_title_section(doc, project_info['title'], project_info['ipo_number'])
-    add_opening_paragraph(doc, client_info['name'], client_info['master_agreement_date'])
-    add_project_identification(
-        doc,
-        project_info['name'],
-        project_info.get('name_line2'),
-        project_info['project_manager'],
-        project_info['project_number']
-    )
+    create_header(section)
+    create_footer(section)
     
-    # Overall Project Understanding
-    if project_info.get('overall_understanding'):
-        add_section_with_heading(
-            doc,
-            'Overall Project Understanding:',
-            [project_info['overall_understanding']]
-        )
-    
-    # Lot Specific Project Understanding
-    if project_info.get('lot_understanding'):
-        add_section_with_heading(
-            doc,
-            'Lot Specific Project Understanding:',
-            [project_info['lot_understanding']]
-        )
-    
-    # Scope of Services with tasks
+    add_opening_section(doc, client_info, project_info)
+    add_project_understanding(doc, project_info['description'])
     add_scope_of_services(doc, selected_tasks)
+    add_scope_table(doc, selected_tasks)
     
-    # Add simple footer
-    add_simple_footer(doc)
-    
-    # Save document
     doc.save(output_path)
     return output_path
 
@@ -374,109 +482,56 @@ def generate_msa_ipo_document(project_info, client_info, selected_tasks, output_
 # STREAMLIT APP
 # ============================================================================
 
-# Page configuration
 st.set_page_config(
-    page_title="MSA IPO Generator",
-    page_icon="📋",
+    page_title="Development Services Proposal Generator",
+    page_icon="🏗️",
     layout="wide"
 )
 
-# Title
-st.title("📋 Master Services Agreement - Individual Project Order Generator")
-st.markdown("Generate IPO documents for projects under the Master Services Agreement")
+st.title("🏗️ Development Services Proposal Generator")
 st.markdown("---")
 
-# Section 1: Document Header Information
-st.header("📄 Document Header")
+# Client Information
+st.header("📋 Client Information")
 col1, col2 = st.columns(2)
 
 with col1:
-    project_title = st.text_input(
-        "Project Title (appears at top) *",
-        placeholder="e.g., USF Fletcher District – Phase 1",
-        help="This appears as the main title at the top of the document"
-    )
-    
-    project_name = st.text_input(
-        "Project Name (Identification section) *",
-        placeholder="e.g., USF Fletcher District – Phase 1",
-        help="This appears in the 'Identification of Project' section"
-    )
+    client_name = st.text_input("Client Name *", placeholder="e.g., ABC Development Corporation")
+    contact_person = st.text_input("Contact Person *", placeholder="e.g., Ms. Michelle Bach")
+    address_line1 = st.text_input("Address Line 1 *", placeholder="e.g., 123 Main Street")
 
 with col2:
-    ipo_number = st.text_input(
-        "IPO Number *",
-        placeholder="e.g., 01",
-        help="Individual Project Order number"
-    )
-    
-    project_name_line2 = st.text_input(
-        "Project Name Line 2",
-        placeholder="e.g., Lot A Hotel, Conference Center and Retail",
-        help="Optional second line for project name (will be aligned)"
-    )
+    address_line2 = st.text_input("Address Line 2 *", placeholder="e.g., Tampa, FL 33602")
+    phone = st.text_input("Phone Number", placeholder="e.g., (813) 555-1234")
+    email = st.text_input("Email Address", placeholder="e.g., info@example.com")
 
 st.markdown("---")
 
-# Section 2: Client Information
-st.header("🏢 Client Information")
+# Project Details
+st.header("📍 Project Details")
 col3, col4 = st.columns(2)
 
 with col3:
-    client_name = st.text_input(
-        "Client Name *",
-        placeholder="e.g., ACE Fletcher LLC"
-    )
+    proposal_date = st.date_input("Proposal Date *", value=date.today())
+    project_name = st.text_input("Project Name *", placeholder="e.g., Self Storage – 7400 22nd Ave N. St Petersburg 33710")
 
 with col4:
-    master_agreement_date = st.text_input(
-        "Master Agreement Date *",
-        placeholder="e.g., August 15, 2024",
-        help="Date of the Master Services Agreement"
-    )
+    project_location = st.text_input("Project Location", placeholder="e.g., St. Petersburg, Florida")
 
-st.markdown("---")
-
-# Section 3: Project Details
-st.header("📍 Project Details")
-col5, col6 = st.columns(2)
-
-with col5:
-    project_manager = st.text_input(
-        "KH Project Manager *",
-        placeholder="e.g., Dustin Ballard, PE"
-    )
-
-with col6:
-    project_number = st.text_input(
-        "Project Number *",
-        placeholder="e.g., 145683001"
-    )
-
-overall_understanding = st.text_area(
-    "Overall Project Understanding *",
-    placeholder="Enter the overall project description...",
-    height=100,
-    help="High-level description of the overall project"
-)
-
-lot_understanding = st.text_area(
-    "Lot Specific Project Understanding *",
-    placeholder="Enter the lot-specific project description...",
-    height=100,
-    help="Description specific to this lot/phase"
+project_description = st.text_area(
+    "Project Description / Understanding *",
+    placeholder="Enter a detailed description of the project scope, objectives, and key requirements...",
+    height=150
 )
 
 st.markdown("---")
 
-# Section 4: Task Selection and Fees
-st.header("✅ Specific Scope of Basic Services")
-st.markdown("Select the tasks to include in this IPO and enter the fee for each task.")
+# Task Selection
+st.header("✅ Scope of Services")
+st.markdown("Select the tasks to include in the proposal and enter the fee for each task.")
 
-# Dictionary to store selected tasks
 selected_tasks = {}
 
-# Display each task with checkbox and fee input
 for task_num in sorted(DEFAULT_FEES.keys()):
     task = DEFAULT_FEES[task_num]
     
@@ -501,6 +556,14 @@ for task_num in sorted(DEFAULT_FEES.keys()):
         
         st.markdown(f"**Fee Type:** {task['type']}")
         
+        desc_preview = TASK_DESCRIPTIONS[task_num][0]
+        if len(desc_preview) > 200:
+            desc_preview = desc_preview[:200] + "..."
+        st.markdown(f"*{desc_preview}*")
+        
+        if len(TASK_DESCRIPTIONS[task_num]) > 1:
+            st.caption(f"({len(TASK_DESCRIPTIONS[task_num])} total paragraphs will be included)")
+        
         if task_selected:
             final_fee = fee_amount if fee_amount is not None else task['amount']
             selected_tasks[task_num] = {
@@ -511,7 +574,7 @@ for task_num in sorted(DEFAULT_FEES.keys()):
 
 st.markdown("---")
 
-# Section 5: Selected Tasks Summary
+# Summary
 if selected_tasks:
     st.header("📊 Selected Tasks Summary")
     
@@ -525,75 +588,61 @@ if selected_tasks:
     st.markdown(f"### **Total Fee: ${total_fee:,}**")
     st.markdown("---")
 else:
-    st.info("👆 Select at least one task to generate an IPO document")
+    st.info("👆 Select at least one task to generate a proposal")
 
-# Section 6: Generate Button
-st.header("📄 Generate IPO Document")
+# Generate Button
+st.header("📄 Generate Proposal")
 
-# Validation
 required_fields = {
-    'Project Title': project_title,
-    'IPO Number': ipo_number,
-    'Project Name': project_name,
     'Client Name': client_name,
-    'Master Agreement Date': master_agreement_date,
-    'KH Project Manager': project_manager,
-    'Project Number': project_number,
-    'Overall Project Understanding': overall_understanding,
-    'Lot Specific Project Understanding': lot_understanding
+    'Contact Person': contact_person,
+    'Address Line 1': address_line1,
+    'Address Line 2': address_line2,
+    'Project Name': project_name,
+    'Project Description': project_description
 }
 
 missing_fields = [field for field, value in required_fields.items() if not value]
 
 if missing_fields:
-    st.warning(f"⚠️ Please fill in the following required fields: {', '.join(missing_fields)}")
+    st.warning(f"⚠️ Please fill in: {', '.join(missing_fields)}")
 
 if not selected_tasks:
     st.warning("⚠️ Please select at least one task")
 
-# Generate button
 can_generate = not missing_fields and bool(selected_tasks)
 
-if st.button(
-    "🚀 Generate IPO Document",
-    type="primary",
-    disabled=not can_generate
-):
-    with st.spinner("Generating IPO document..."):
+if st.button("🚀 Generate Proposal Document", type="primary", disabled=not can_generate):
+    with st.spinner("Generating proposal document..."):
         try:
-            # Prepare data
-            project_info = {
-                'title': project_title,
-                'ipo_number': ipo_number,
-                'name': project_name,
-                'name_line2': project_name_line2 if project_name_line2 else None,
-                'project_manager': project_manager,
-                'project_number': project_number,
-                'overall_understanding': overall_understanding,
-                'lot_understanding': lot_understanding
-            }
-            
             client_info = {
                 'name': client_name,
-                'master_agreement_date': master_agreement_date
+                'contact': contact_person,
+                'address1': address_line1,
+                'address2': address_line2,
+                'phone': phone,
+                'email': email
             }
             
-            # Generate document
-            buffer = BytesIO()
-            temp_path = '/tmp/temp_ipo.docx'
-            generate_msa_ipo_document(project_info, client_info, selected_tasks, temp_path)
+            project_info = {
+                'date': proposal_date.strftime("%B %d, %Y"),
+                'name': project_name,
+                'location': project_location,
+                'description': project_description
+            }
             
-            # Read file into buffer
+            buffer = BytesIO()
+            temp_path = '/tmp/temp_proposal.docx'
+            generate_proposal_document(client_info, project_info, selected_tasks, temp_path)
+            
             with open(temp_path, 'rb') as f:
                 buffer.write(f.read())
             buffer.seek(0)
             
-            # Create filename
-            filename = f"IPO_{ipo_number}_{project_name.replace(' ', '_')[:30]}.docx"
+            filename = f"Proposal_{project_name.replace(' ', '_')[:30]}_{proposal_date.strftime('%Y%m%d')}.docx"
             
-            st.success("✅ **Document Generated Successfully!**")
+            st.success("✅ **Proposal document generated successfully!**")
             
-            # Download button
             st.download_button(
                 label="📥 Download Word Document",
                 data=buffer.getvalue(),
@@ -604,10 +653,9 @@ if st.button(
             )
             
         except Exception as e:
-            st.error(f"❌ **Error generating document:** {str(e)}")
+            st.error(f"❌ **Error:** {str(e)}")
             with st.expander("Show Error Details"):
                 st.exception(e)
 
-# Footer
 st.markdown("---")
-st.caption("MSA IPO Generator | Kimley-Horn Development Services")
+st.caption("Development Services Proposal Generator | Kimley-Horn")
