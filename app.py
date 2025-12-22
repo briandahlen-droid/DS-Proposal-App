@@ -536,42 +536,36 @@ selected_tasks = {}
 for task_num in sorted(DEFAULT_FEES.keys()):
     task = DEFAULT_FEES[task_num]
     
-    with st.expander(f"Task {task_num}: {task['name']}", expanded=True):
-        col_check, col_fee = st.columns([3, 1])
-        
-        with col_check:
-            task_selected = st.checkbox(
-                f"Include Task {task_num}",
-                key=f"check_{task_num}"
-            )
-        
-        with col_fee:
-            fee_amount = st.number_input(
-                "Fee Amount ($)",
-                min_value=0,
-                value=None,
-                placeholder=f"${task['amount']:,}",
-                key=f"fee_{task_num}",
-                disabled=not task_selected
-            )
-        
-        st.markdown(f"**Fee Type:** {task['type']}")
-        
-        desc_preview = TASK_DESCRIPTIONS[task_num][0]
-        if len(desc_preview) > 200:
-            desc_preview = desc_preview[:200] + "..."
-        st.markdown(f"*{desc_preview}*")
-        
-        if len(TASK_DESCRIPTIONS[task_num]) > 1:
-            st.caption(f"({len(TASK_DESCRIPTIONS[task_num])} total paragraphs will be included)")
-        
-        if task_selected:
-            final_fee = fee_amount if fee_amount is not None else task['amount']
-            selected_tasks[task_num] = {
-                'name': task['name'],
-                'fee': final_fee,
-                'type': task['type']
-            }
+    # Compact row layout
+    col_check, col_name, col_fee = st.columns([1, 4, 2])
+    
+    with col_check:
+        task_selected = st.checkbox(
+            f"{task_num}",
+            key=f"check_{task_num}"
+        )
+    
+    with col_name:
+        st.markdown(f"**Task {task_num}: {task['name']}**")
+    
+    with col_fee:
+        fee_amount = st.number_input(
+            "Fee ($)",
+            min_value=0,
+            value=None,
+            placeholder=f"{task['amount']:,}",
+            key=f"fee_{task_num}",
+            disabled=not task_selected,
+            label_visibility="collapsed"
+        )
+    
+    if task_selected:
+        final_fee = fee_amount if fee_amount is not None else task['amount']
+        selected_tasks[task_num] = {
+            'name': task['name'],
+            'fee': final_fee,
+            'type': task['type']
+        }
 
 st.markdown("---")
 
