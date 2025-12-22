@@ -552,10 +552,12 @@ if not selected_tasks:
     st.warning("⚠️ Please select at least one task")
 
 # Generate button
+can_generate = not missing_fields and bool(selected_tasks)
+
 if st.button(
     "🚀 Generate IPO Document",
     type="primary",
-    disabled=(missing_fields or not selected_tasks)
+    disabled=not can_generate
 ):
     with st.spinner("Generating IPO document..."):
         try:
