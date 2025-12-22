@@ -497,11 +497,11 @@ col1, col2 = st.columns(2)
 
 with col1:
     client_name = st.text_input("Client Name *", placeholder="e.g., ABC Development Corporation")
-    contact_person = st.text_input("Contact Person *", placeholder="e.g., Ms. Michelle Bach")
     address_line1 = st.text_input("Address Line 1 *", placeholder="e.g., 123 Main Street")
+    address_line2 = st.text_input("Address Line 2 *", placeholder="e.g., Tampa, FL 33602")
 
 with col2:
-    address_line2 = st.text_input("Address Line 2 *", placeholder="e.g., Tampa, FL 33602")
+    contact_person = st.text_input("Contact Person *", placeholder="e.g., Ms. Michelle Bach")
     phone = st.text_input("Phone Number", placeholder="e.g., (813) 555-1234")
     email = st.text_input("Email Address", placeholder="e.g., info@example.com")
 
@@ -516,7 +516,8 @@ with col3:
     project_name = st.text_input("Project Name *", placeholder="e.g., Self Storage – 7400 22nd Ave N. St Petersburg 33710")
 
 with col4:
-    project_location = st.text_input("Project Location", placeholder="e.g., St. Petersburg, Florida")
+    project_address = st.text_input("Project Address", placeholder="e.g., 7400 22nd Ave N")
+    project_city_state_zip = st.text_input("City, State, Zip", placeholder="e.g., St. Petersburg, FL 33710")
 
 project_description = st.text_area(
     "Project Description / Understanding *",
@@ -627,7 +628,8 @@ if st.button("🚀 Generate Proposal Document", type="primary", disabled=not can
             project_info = {
                 'date': proposal_date.strftime("%B %d, %Y"),
                 'name': project_name,
-                'location': project_location,
+                'address': project_address,
+                'city_state_zip': project_city_state_zip,
                 'description': project_description
             }
             
