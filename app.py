@@ -123,66 +123,50 @@ PERMIT_MAPPING = {
 
 def lookup_hillsborough_property(parcel_id):
     """
-    Lookup property from Hillsborough County.
-    FOLIO format: Can be with or without dash (e.g., 192605-0030 or 1926050030)
+    Lookup property from Hillsborough County via SWFWMD regional service.
+    FOLIO format: Remove dash (192605-0030 becomes 1926050030)
     """
     import requests
     
-    base_url = "https://arcgis.tampagov.net/arcgis/rest/services/Parcels/TaxParcel/FeatureServer/0/query"
+    # Use SWFWMD regional service - more reliable
+    base_url = "https://www25.swfwmd.state.fl.us/arcgis12/rest/services/BaseVector/parcel_search/MapServer/7/query"
     
-    # First, get a sample record to see field names (debug)
-    debug_params = {
-        'where': '1=1',
+    # Remove dash
+    folio_normalized = parcel_id.replace('-', '')
+    
+    params = {
+        'where': f"FOLIONUM='{folio_normalized}'",
         'outFields': '*',
         'returnGeometry': 'false',
-        'resultRecordCount': 1,
         'f': 'json'
     }
     
     try:
-        debug_response = requests.get(base_url, params=debug_params, timeout=10)
-        debug_data = debug_response.json()
+        response = requests.get(base_url, params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
         
-        if debug_data.get('features'):
-            sample_attr = debug_data['features'][0]['attributes']
-            # Find the parcel ID field
-            parcel_fields = [k for k in sample_attr.keys() if 'FOLIO' in k.upper() or 'PARCEL' in k.upper()]
+        if data.get('features') and len(data['features']) > 0:
+            attr = data['features'][0]['attributes']
             
-            if parcel_fields:
-                actual_field = parcel_fields[0]  # Use first match
-                
-                # Now try lookup with correct field
-                formats_to_try = [parcel_id, parcel_id.replace('-', '')]
-                
-                for folio_format in formats_to_try:
-                    params = {
-                        'where': f"{actual_field}='{folio_format}'",
-                        'outFields': '*',
-                        'returnGeometry': 'false',
-                        'f': 'json'
-                    }
-                    
-                    response = requests.get(base_url, params=params, timeout=10)
-                    data = response.json()
-                    
-                    if data.get('features') and len(data['features']) > 0:
-                        attr = data['features'][0]['attributes']
-                        
-                        return {
-                            'success': True,
-                            'address': attr.get('SITE_ADDR', ''),
-                            'city': attr.get('SITE_CITY', ''),
-                            'zip': attr.get('SITE_ZIP', ''),
-                            'owner': attr.get('OWNER', ''),
-                            'land_use': attr.get('DOR_C', ''),
-                            'zoning': 'Not available',
-                            'error': None
-                        }
+            return {
+                'success': True,
+                'address': attr.get('SITUSADD1', ''),
+                'city': attr.get('SCITY', 'TAMPA'),
+                'zip': attr.get('SZIP', ''),
+                'owner': attr.get('OWNERNAME', ''),
+                'land_use': attr.get('PARUSEDESC', ''),
+                'zoning': 'Contact City/County for zoning info',
+                'error': None
+            }
+        else:
+            return {
+                'success': False,
+                'error': f'Parcel {folio_normalized} not found in database'
+            }
     
     except Exception as e:
         return {'success': False, 'error': f'API Error: {str(e)}'}
-    
-    return {'success': False, 'error': f'Parcel ID not found in Hillsborough County database'}
 
 
 def lookup_manatee_property(parcel_id):
