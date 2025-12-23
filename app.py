@@ -125,41 +125,46 @@ def lookup_hillsborough_property(parcel_id):
     """
     Lookup property from Hillsborough County (simplest implementation).
     Single-layer API with all required fields.
+    FOLIO format: Can be with or without dash (e.g., 192605-0030 or 1926050030)
     """
     import requests
     
     base_url = "https://arcgis.tampagov.net/arcgis/rest/services/Parcels/TaxParcel/FeatureServer/0/query"
     
-    params = {
-        'where': f"FOLIO='{parcel_id}'",
-        'outFields': '*',
-        'returnGeometry': 'false',
-        'f': 'json'
-    }
+    # Try with dash first, then without
+    formats_to_try = [parcel_id, parcel_id.replace('-', '')]
     
-    try:
-        response = requests.get(base_url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+    for folio_format in formats_to_try:
+        params = {
+            'where': f"FOLIO='{folio_format}'",
+            'outFields': '*',
+            'returnGeometry': 'false',
+            'f': 'json'
+        }
         
-        if data.get('features') and len(data['features']) > 0:
-            attr = data['features'][0]['attributes']
+        try:
+            response = requests.get(base_url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
             
-            return {
-                'success': True,
-                'address': attr.get('SITE_ADDR', ''),
-                'city': attr.get('SITE_CITY', ''),
-                'zip': attr.get('SITE_ZIP', ''),
-                'owner': attr.get('OWNER', ''),
-                'land_use': attr.get('DOR_C', ''),  # DOR use code
-                'zoning': 'Not available in primary layer',
-                'error': None
-            }
-        else:
-            return {'success': False, 'error': 'Parcel ID not found in Hillsborough County'}
+            if data.get('features') and len(data['features']) > 0:
+                attr = data['features'][0]['attributes']
+                
+                return {
+                    'success': True,
+                    'address': attr.get('SITE_ADDR', ''),
+                    'city': attr.get('SITE_CITY', ''),
+                    'zip': attr.get('SITE_ZIP', ''),
+                    'owner': attr.get('OWNER', ''),
+                    'land_use': attr.get('DOR_C', ''),
+                    'zoning': 'Not available in primary layer',
+                    'error': None
+                }
+        
+        except Exception as e:
+            continue  # Try next format
     
-    except Exception as e:
-        return {'success': False, 'error': f'API Error: {str(e)}'}
+    return {'success': False, 'error': f'Parcel ID not found. Tried formats: {", ".join(formats_to_try)}'}
 
 
 def lookup_manatee_property(parcel_id):
