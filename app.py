@@ -121,14 +121,17 @@ PERMIT_MAPPING = {
 # PROPERTY LOOKUP FUNCTIONS
 # ============================================================================
 
-def lookup_pinellas_property(parcel_id):
-    """Lookup property info from Pinellas County ArcGIS REST API."""
+def lookup_hillsborough_property(parcel_id):
+    """
+    Lookup property from Hillsborough County (simplest implementation).
+    Single-layer API with all required fields.
+    """
     import requests
     
-    base_url = "https://egis.pinellas.gov/gis/rest/services/AGO/Parcels/MapServer/1/query"
+    base_url = "https://arcgis.tampagov.net/arcgis/rest/services/Parcels/TaxParcel/FeatureServer/0/query"
     
     params = {
-        'where': f"PARCELID = '{parcel_id}'",
+        'where': f"FOLIO='{parcel_id}'",
         'outFields': '*',
         'returnGeometry': 'false',
         'f': 'json'
@@ -144,16 +147,57 @@ def lookup_pinellas_property(parcel_id):
             
             return {
                 'success': True,
-                'address': attr.get('SITEADDR', ''),
-                'city': attr.get('SITECITY', ''),
-                'zip': attr.get('SITEZIP', ''),
-                'owner': attr.get('OWNERNAME', ''),
-                'land_use': attr.get('DOR_UC_DESC', ''),
+                'address': attr.get('SITE_ADDR', ''),
+                'city': attr.get('SITE_CITY', ''),
+                'zip': attr.get('SITE_ZIP', ''),
+                'owner': attr.get('OWNER', ''),
+                'land_use': attr.get('DOR_C', ''),  # DOR use code
+                'zoning': 'Not available in primary layer',
+                'error': None
+            }
+        else:
+            return {'success': False, 'error': 'Parcel ID not found in Hillsborough County'}
+    
+    except Exception as e:
+        return {'success': False, 'error': f'API Error: {str(e)}'}
+
+
+def lookup_manatee_property(parcel_id):
+    """
+    Lookup property from Manatee County.
+    Excellent data completeness - all fields in single layer.
+    """
+    import requests
+    
+    base_url = "https://www.mymanatee.org/gisits/rest/services/opendata/Planning/MapServer/22/query"
+    
+    params = {
+        'where': f"PIN='{parcel_id}'",
+        'outFields': '*',
+        'returnGeometry': 'false',
+        'f': 'json'
+    }
+    
+    try:
+        response = requests.get(base_url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get('features') and len(data['features']) > 0:
+            attr = data['features'][0]['attributes']
+            
+            return {
+                'success': True,
+                'address': attr.get('PRIMARY_ADDRESS', ''),
+                'city': attr.get('PROP_CITYNAME', ''),
+                'zip': attr.get('PROP_ZIP', ''),
+                'owner': attr.get('OWNER', ''),
+                'land_use': attr.get('FUTURE_LAND_USE', ''),
                 'zoning': attr.get('ZONING', ''),
                 'error': None
             }
         else:
-            return {'success': False, 'error': 'Parcel ID not found'}
+            return {'success': False, 'error': 'Parcel ID not found in Manatee County'}
     
     except Exception as e:
         return {'success': False, 'error': f'API Error: {str(e)}'}
@@ -161,10 +205,12 @@ def lookup_pinellas_property(parcel_id):
 
 def lookup_property_info(county, parcel_id):
     """Lookup property info based on county."""
-    if county == "Pinellas":
-        return lookup_pinellas_property(parcel_id)
+    if county == "Hillsborough":
+        return lookup_hillsborough_property(parcel_id)
+    elif county == "Manatee":
+        return lookup_manatee_property(parcel_id)
     else:
-        return {'success': False, 'error': f'{county} County lookup not yet implemented.'}
+        return {'success': False, 'error': f'{county} County lookup not yet implemented. Please enter information manually.'}
 
 # ============================================================================
 # DOCUMENT GENERATION FUNCTIONS
