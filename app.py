@@ -118,6 +118,55 @@ PERMIT_MAPPING = {
 }
 
 # ============================================================================
+# PROPERTY LOOKUP FUNCTIONS
+# ============================================================================
+
+def lookup_pinellas_property(parcel_id):
+    """Lookup property info from Pinellas County ArcGIS REST API."""
+    import requests
+    
+    base_url = "https://egis.pinellas.gov/gis/rest/services/AGO/Parcels/MapServer/1/query"
+    
+    params = {
+        'where': f"PARCELID = '{parcel_id}'",
+        'outFields': '*',
+        'returnGeometry': 'false',
+        'f': 'json'
+    }
+    
+    try:
+        response = requests.get(base_url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if data.get('features') and len(data['features']) > 0:
+            attr = data['features'][0]['attributes']
+            
+            return {
+                'success': True,
+                'address': attr.get('SITEADDR', ''),
+                'city': attr.get('SITECITY', ''),
+                'zip': attr.get('SITEZIP', ''),
+                'owner': attr.get('OWNERNAME', ''),
+                'land_use': attr.get('DOR_UC_DESC', ''),
+                'zoning': attr.get('ZONING', ''),
+                'error': None
+            }
+        else:
+            return {'success': False, 'error': 'Parcel ID not found'}
+    
+    except Exception as e:
+        return {'success': False, 'error': f'API Error: {str(e)}'}
+
+
+def lookup_property_info(county, parcel_id):
+    """Lookup property info based on county."""
+    if county == "Pinellas":
+        return lookup_pinellas_property(parcel_id)
+    else:
+        return {'success': False, 'error': f'{county} County lookup not yet implemented.'}
+
+# ============================================================================
 # DOCUMENT GENERATION FUNCTIONS
 # ============================================================================
 
@@ -611,10 +660,34 @@ with col_prop3:
         help="Property parcel identification number"
     )
 
-# Lookup button (placeholder for now)
+# Lookup button
 if st.button("🔍 Lookup Property Info", disabled=not (county and parcel_id)):
-    st.info("🚧 Property lookup feature coming soon! For now, please enter details manually below.")
-    # TODO: Implement API lookup functionality
+    with st.spinner(f"Looking up property info in {county} County..."):
+        result = lookup_property_info(county, parcel_id)
+        
+        if result['success']:
+            st.success(f"✅ Property found!")
+            st.session_state['lookup_address'] = result.get('address', '')
+            st.session_state['lookup_city'] = result.get('city', '')
+            st.session_state['lookup_zip'] = result.get('zip', '')
+            st.session_state['lookup_owner'] = result.get('owner', '')
+            st.session_state['lookup_land_use'] = result.get('land_use', '')
+            st.session_state['lookup_zoning'] = result.get('zoning', '')
+            
+            # Display found info
+            st.info(f"""
+            **Found Property Information:**
+            - Address: {result.get('address', 'N/A')}
+            - City: {result.get('city', 'N/A')}, FL {result.get('zip', 'N/A')}
+            - Owner: {result.get('owner', 'N/A')}
+            - Land Use: {result.get('land_use', 'N/A')}
+            - Zoning: {result.get('zoning', 'N/A')}
+            
+            *Fields below will be auto-filled. Please verify accuracy.*
+            """)
+            st.rerun()
+        else:
+            st.error(f"❌ {result['error']}")
 
 st.markdown("---")
 
@@ -643,8 +716,16 @@ with col3:
     project_name = st.text_input("Project Name *", placeholder="e.g., Self Storage – 7400 22nd Ave N. St Petersburg 33710")
 
 with col4:
-    project_address = st.text_input("Project Address", placeholder="e.g., 7400 22nd Ave N")
-    project_city_state_zip = st.text_input("City, State, Zip", placeholder="e.g., St. Petersburg, FL 33710")
+    project_address = st.text_input(
+        "Project Address",
+        value=st.session_state.get('lookup_address', ''),
+        placeholder="e.g., 7400 22nd Ave N"
+    )
+    project_city_state_zip = st.text_input(
+        "City, State, Zip",
+        value=f"{st.session_state.get('lookup_city', '')}, FL {st.session_state.get('lookup_zip', '')}".strip(', FL '),
+        placeholder="e.g., St. Petersburg, FL 33710"
+    )
 
 project_description = st.text_area(
     "Project Description / Understanding *",
