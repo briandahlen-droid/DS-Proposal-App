@@ -75,6 +75,49 @@ TASK_DESCRIPTIONS = {
 }
 
 # ============================================================================
+# PERMIT CONFIGURATION BY COUNTY
+# ============================================================================
+
+PERMIT_MAPPING = {
+    "Pinellas": {
+        "ahj_name": "Pinellas County",
+        "wmd": "Southwest Florida Water Management District",
+        "wmd_short": "SWFWMD",
+        "default_permits": ["ahj", "wmd_erp", "sewer", "water"]
+    },
+    "Hillsborough": {
+        "ahj_name": "Hillsborough County",
+        "wmd": "Southwest Florida Water Management District", 
+        "wmd_short": "SWFWMD",
+        "default_permits": ["ahj", "wmd_erp", "sewer", "water"]
+    },
+    "Pasco": {
+        "ahj_name": "Pasco County",
+        "wmd": "Southwest Florida Water Management District",
+        "wmd_short": "SWFWMD", 
+        "default_permits": ["ahj", "wmd_erp", "sewer", "water"]
+    },
+    "Manatee": {
+        "ahj_name": "Manatee County",
+        "wmd": "Southwest Florida Water Management District",
+        "wmd_short": "SWFWMD",
+        "default_permits": ["ahj", "wmd_erp", "sewer", "water"]
+    },
+    "Sarasota": {
+        "ahj_name": "Sarasota County",
+        "wmd": "Southwest Florida Water Management District",
+        "wmd_short": "SWFWMD",
+        "default_permits": ["ahj", "wmd_erp", "sewer", "water"]
+    },
+    "Polk": {
+        "ahj_name": "Polk County",
+        "wmd": "Southwest Florida Water Management District",
+        "wmd_short": "SWFWMD",
+        "default_permits": ["ahj", "wmd_erp", "sewer", "water"]
+    }
+}
+
+# ============================================================================
 # DOCUMENT GENERATION FUNCTIONS
 # ============================================================================
 
@@ -722,22 +765,57 @@ st.markdown("---")
 st.header("📋 Permitting Requirements")
 st.markdown("Select the permits/approvals required for this project (applies to Task 150 - Civil Permitting):")
 
+# Get permit defaults based on selected county
+permit_config = PERMIT_MAPPING.get(county, {})
+default_permits = permit_config.get('default_permits', [])
+ahj_name = permit_config.get('ahj_name', 'Authority Having Jurisdiction')
+wmd_name = permit_config.get('wmd_short', 'Water Management District')
+
 col_permit1, col_permit2, col_permit3 = st.columns(3)
 
 with col_permit1:
-    permit_ahj = st.checkbox("Authority Having Jurisdiction (AHJ)", value=True)
-    permit_sewer = st.checkbox("Sewer Provider")
-    permit_water = st.checkbox("Water Provider")
+    permit_ahj = st.checkbox(
+        f"{ahj_name}",
+        value=("ahj" in default_permits),
+        help="Primary permitting authority"
+    )
+    permit_sewer = st.checkbox(
+        "Sewer Provider",
+        value=("sewer" in default_permits)
+    )
+    permit_water = st.checkbox(
+        "Water Provider",
+        value=("water" in default_permits)
+    )
 
 with col_permit2:
-    permit_wmd_erp = st.checkbox("Water Management District ERP", value=True)
-    permit_fdep = st.checkbox("FDEP Potable Water/Wastewater")
-    permit_fdot_drainage = st.checkbox("FDOT Drainage Connection")
+    permit_wmd_erp = st.checkbox(
+        f"{wmd_name} ERP",
+        value=("wmd_erp" in default_permits),
+        help="Environmental Resources Permit"
+    )
+    permit_fdep = st.checkbox(
+        "FDEP Potable Water/Wastewater",
+        value=("fdep" in default_permits)
+    )
+    permit_fdot_drainage = st.checkbox(
+        "FDOT Drainage Connection",
+        value=("fdot_drainage" in default_permits)
+    )
 
 with col_permit3:
-    permit_fdot_driveway = st.checkbox("FDOT Driveway Connection")
-    permit_fdot_utility = st.checkbox("FDOT Utility Connection")
-    permit_fema = st.checkbox("FEMA")
+    permit_fdot_driveway = st.checkbox(
+        "FDOT Driveway Connection",
+        value=("fdot_driveway" in default_permits)
+    )
+    permit_fdot_utility = st.checkbox(
+        "FDOT Utility Connection",
+        value=("fdot_utility" in default_permits)
+    )
+    permit_fema = st.checkbox(
+        "FEMA",
+        value=("fema" in default_permits)
+    )
 
 st.markdown("---")
 
@@ -839,15 +917,19 @@ if st.button("🚀 Generate Proposal Document", type="primary", disabled=not can
                 assumptions.append("The project will be constructed in one (1) phase.")
             
             # Collect permitting requirements
+            permit_config = PERMIT_MAPPING.get(county, {})
+            ahj_name = permit_config.get('ahj_name', 'Authority Having Jurisdiction')
+            wmd_full = permit_config.get('wmd', 'Water Management District')
+            
             permits = []
             if permit_ahj:
-                permits.append("Authority Having Jurisdiction (AHJ)")
+                permits.append(ahj_name)
             if permit_sewer:
-                permits.append("Sewer Provider")
+                permits.append("Sewer Provider" if not ahj_name else f"{ahj_name} Sewer")
             if permit_water:
-                permits.append("Water Provider")
+                permits.append("Water Provider" if not ahj_name else f"{ahj_name} Water")
             if permit_wmd_erp:
-                permits.append(f"{county} Water Management District Environmental Resources Permit (ERP)")
+                permits.append(f"{wmd_full} Environmental Resources Permit (ERP)")
             if permit_fdep:
                 permits.append("Florida Department of Environmental Protection (FDEP) Potable Water and Wastewater Permit")
             if permit_fdot_drainage:
