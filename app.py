@@ -521,7 +521,7 @@ def add_project_understanding(doc, project_description, assumptions):
     doc.add_paragraph()
 
 
-def add_scope_of_services(doc, selected_tasks):
+def add_scope_of_services(doc, selected_tasks, permits):
     """Add Scope of Services section."""
     
     para = doc.add_paragraph()
@@ -550,9 +550,25 @@ def add_scope_of_services(doc, selected_tasks):
     
     for task_num in sorted(selected_tasks.keys()):
         task = selected_tasks[task_num]
-        descriptions = TASK_DESCRIPTIONS[task_num]
         
+        # Special handling for Task 150 - Civil Permitting
+        if task_num == '150' and permits:
+            descriptions = [
+                "Kimley-Horn will prepare and submit on the Client's behalf the civil construction documents to the following agencies:"
+            ]
+            # Add permits as separate items for bullet point formatting
+            descriptions.extend(permits)
+            descriptions.extend([
+                "Includes development of a Stormwater Ownership and Maintenance (O&M) Plan",
+                "Kimley-Horn will respond to a maximum of three (3) requests for information during the agency review process for obtaining the above permits.",
+                "**BOLD:**Permit fees and impact fees are not included. Kimley-Horn does not guarantee the issuance of permits or approvals."
+            ])
+        else:
+            descriptions = TASK_DESCRIPTIONS[task_num]
+        
+        # Task heading - BOLD + UNDERLINED (no automatic page break)
         para = doc.add_paragraph()
+        # Removed: para.paragraph_format.page_break_before = True
         run = para.add_run(f'Task {task_num} – {task["name"].replace("Civil ", "")}')
         run.font.name = 'Arial'
         run.font.size = Pt(11)
@@ -564,38 +580,80 @@ def add_scope_of_services(doc, selected_tasks):
         
         doc.add_paragraph()
         
+        permit_list_started = False
+        
         for desc in descriptions:
+            # Check if this is a permit item (short, from permits list)
+            is_permit_bullet = (task_num == '150' and desc in permits)
+            
+            # Start bullet list after intro
+            if task_num == '150' and 'following agencies:' in desc:
+                para = doc.add_paragraph()
+                run = para.add_run(desc)
+                run.font.name = 'Arial'
+                run.font.size = Pt(11)
+                para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                para.paragraph_format.space_after = Pt(0)
+                para.paragraph_format.line_spacing = 1.0
+                doc.add_paragraph()
+                permit_list_started = True
+                continue
+            
+            if is_permit_bullet:
+                # Permit as bullet point - INDENTED
+                para = doc.add_paragraph(style='List Bullet')
+                para.paragraph_format.left_indent = Inches(0.25)  # Indent for clarity
+                run = para.add_run(desc)
+                run.font.name = 'Arial'
+                run.font.size = Pt(11)
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                para.paragraph_format.space_after = Pt(0)
+                para.paragraph_format.line_spacing = 1.0
+                continue
+            
+            # End permit bullets, back to regular paragraphs
+            if permit_list_started and not is_permit_bullet:
+                permit_list_started = False
+                doc.add_paragraph()
+            
+            # Check if bold text
+            is_bold_para = desc.startswith('**BOLD:**')
+            
             para = doc.add_paragraph()
             
-            # Check if sub-section heading (italic only)
+            # Check if sub-section heading
             is_subsection = (len(desc) < 100 and 
                            any(kw in desc.lower() for kw in sub_section_keywords) and
                            not desc.endswith('.') and
-                           not desc.startswith('**NOTE:**'))
+                           not desc.startswith('**NOTE:**') and
+                           not desc.startswith('**BOLD:**'))
             
-            # Check if it's a note (bold+italic)
+            # Check if it's a note
             is_note = desc.startswith('**NOTE:**')
             
             if is_note:
-                # Bold+Italic note
                 run = para.add_run(desc.replace('**NOTE:**', 'Note:'))
                 run.font.name = 'Arial'
                 run.font.size = Pt(11)
                 run.font.bold = True
                 run.font.italic = True
+            elif is_bold_para:
+                run = para.add_run(desc.replace('**BOLD:**', ''))
+                run.font.name = 'Arial'
+                run.font.size = Pt(11)
+                run.font.bold = True
             else:
                 run = para.add_run(desc)
                 run.font.name = 'Arial'
                 run.font.size = Pt(11)
                 
                 if is_subsection:
-                    run.font.italic = True
+                    run.font.underline = True
             
             para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             para.paragraph_format.space_after = Pt(0)
             para.paragraph_format.line_spacing = 1.0
             
-            # Only add blank line if NOT a sub-section heading
             if not is_subsection:
                 doc.add_paragraph()
 
@@ -654,7 +712,7 @@ def add_scope_table(doc, selected_tasks):
     para.paragraph_format.line_spacing = 1.0
 
 
-def generate_proposal_document(client_info, project_info, selected_tasks, assumptions, output_path):
+def generate_proposal_document(client_info, project_info, selected_tasks, assumptions, permits, output_path):
     """Generate complete proposal document."""
     
     doc = Document()
@@ -670,7 +728,7 @@ def generate_proposal_document(client_info, project_info, selected_tasks, assump
     
     add_opening_section(doc, client_info, project_info)
     add_project_understanding(doc, project_info['description'], assumptions)
-    add_scope_of_services(doc, selected_tasks)
+    add_scope_of_services(doc, selected_tasks, permits)
     add_scope_table(doc, selected_tasks)
     
     doc.save(output_path)
@@ -1099,7 +1157,7 @@ if st.button("🚀 Generate Proposal Document", type="primary", disabled=not can
             
             buffer = BytesIO()
             temp_path = '/tmp/temp_proposal.docx'
-            generate_proposal_document(client_info, project_info, selected_tasks, assumptions, temp_path)
+            generate_proposal_document(client_info, project_info, selected_tasks, assumptions, permits, temp_path)
             
             with open(temp_path, 'rb') as f:
                 buffer.write(f.read())
