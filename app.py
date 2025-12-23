@@ -48,12 +48,15 @@ TASK_DESCRIPTIONS = {
         "This sheet will include building setback lines, property lines, outline of building footprint, parking areas, handicap access ramps, sidewalks, crosswalks, driveways, and traffic lanes.",
         "Grading and Drainage Plan",
         "This sheet will include existing and proposed spot elevations and contours, building finish floor elevations, parking area drainage patterns, and stormwater inlet and pipe locations and sizes.",
+        "**NOTE:** Any structural retaining walls are not included with this scope and shall be designed and permitted by others.",
         "Utility Plan",
         "This sheet will show the location and size of all water, sanitary sewer and reclaimed water facilities required to serve the development.",
+        "**NOTE:** Kimley-Horn's contract does not include the design of the fire lines from the designated point of service (P.O.S.) up to 1' above the building foundation.",
         "Erosion and Sediment Control Plan",
         "This sheet will include erosion and sediment control measures designed to be implemented during construction.",
         "Details",
-        "Standard and modified typical construction details will be provided."
+        "Standard and modified typical construction details will be provided.",
+        "**NOTE:** A specifications package is not included in this scope of services as specifications are per authority having jurisdiction (AHJ)."
     ],
     '150': [
         "Prepare and submit on the Client's behalf the following permitting packages for review/approval of construction documents, and attend meetings required to obtain the following Agency approvals:",
@@ -419,21 +422,35 @@ def add_scope_of_services(doc, selected_tasks):
         for desc in descriptions:
             para = doc.add_paragraph()
             
+            # Check if sub-section heading (italic only)
             is_subsection = (len(desc) < 100 and 
                            any(kw in desc.lower() for kw in sub_section_keywords) and
-                           not desc.endswith('.'))
+                           not desc.endswith('.') and
+                           not desc.startswith('**NOTE:**'))
             
-            run = para.add_run(desc)
-            run.font.name = 'Arial'
-            run.font.size = Pt(11)
+            # Check if it's a note (bold+italic)
+            is_note = desc.startswith('**NOTE:**')
             
-            if is_subsection:
+            if is_note:
+                # Bold+Italic note
+                run = para.add_run(desc.replace('**NOTE:**', 'Note:'))
+                run.font.name = 'Arial'
+                run.font.size = Pt(11)
+                run.font.bold = True
                 run.font.italic = True
+            else:
+                run = para.add_run(desc)
+                run.font.name = 'Arial'
+                run.font.size = Pt(11)
+                
+                if is_subsection:
+                    run.font.italic = True
             
             para.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
             para.paragraph_format.space_after = Pt(0)
             para.paragraph_format.line_spacing = 1.0
             
+            # Only add blank line if NOT a sub-section heading
             if not is_subsection:
                 doc.add_paragraph()
 
@@ -594,6 +611,17 @@ project_description = st.text_area(
 
 st.markdown("---")
 
+# Section 3.5: Fee Type Selection
+st.header("💰 Fee Type")
+fee_type = st.radio(
+    "Select fee type for all tasks:",
+    options=["Hourly, Not-to-Exceed", "Hourly", "Lump Sum"],
+    horizontal=True,
+    help="This fee type will apply to all selected tasks"
+)
+
+st.markdown("---")
+
 # Section 4: Project Understanding Assumptions
 st.header("📋 Project Understanding Assumptions")
 st.markdown("Check the assumptions that apply to this project. These will appear in the Project Understanding section.")
@@ -685,12 +713,35 @@ for task_num in sorted(DEFAULT_FEES.keys()):
         selected_tasks[task_num] = {
             'name': task['name'],
             'fee': final_fee,
-            'type': task['type']
+            'type': fee_type  # Use global fee type
         }
 
 st.markdown("---")
 
-# Summary
+# Section 5.5: Permitting Requirements
+st.header("📋 Permitting Requirements")
+st.markdown("Select the permits/approvals required for this project (applies to Task 150 - Civil Permitting):")
+
+col_permit1, col_permit2, col_permit3 = st.columns(3)
+
+with col_permit1:
+    permit_ahj = st.checkbox("Authority Having Jurisdiction (AHJ)", value=True)
+    permit_sewer = st.checkbox("Sewer Provider")
+    permit_water = st.checkbox("Water Provider")
+
+with col_permit2:
+    permit_wmd_erp = st.checkbox("Water Management District ERP", value=True)
+    permit_fdep = st.checkbox("FDEP Potable Water/Wastewater")
+    permit_fdot_drainage = st.checkbox("FDOT Drainage Connection")
+
+with col_permit3:
+    permit_fdot_driveway = st.checkbox("FDOT Driveway Connection")
+    permit_fdot_utility = st.checkbox("FDOT Utility Connection")
+    permit_fema = st.checkbox("FEMA")
+
+st.markdown("---")
+
+# Section 6: Summary
 if selected_tasks:
     st.header("📊 Selected Tasks Summary")
     
@@ -743,6 +794,8 @@ st.markdown("---")
 st.header("📄 Generate Proposal")
 
 required_fields = {
+    'County': county,
+    'City': city,
     'Client Name': client_name,
     'Contact Person': contact_person,
     'Address Line 1': address_line1,
@@ -785,6 +838,27 @@ if st.button("🚀 Generate Proposal Document", type="primary", disabled=not can
             if assume_one_phase:
                 assumptions.append("The project will be constructed in one (1) phase.")
             
+            # Collect permitting requirements
+            permits = []
+            if permit_ahj:
+                permits.append("Authority Having Jurisdiction (AHJ)")
+            if permit_sewer:
+                permits.append("Sewer Provider")
+            if permit_water:
+                permits.append("Water Provider")
+            if permit_wmd_erp:
+                permits.append(f"{county} Water Management District Environmental Resources Permit (ERP)")
+            if permit_fdep:
+                permits.append("Florida Department of Environmental Protection (FDEP) Potable Water and Wastewater Permit")
+            if permit_fdot_drainage:
+                permits.append("FDOT Drainage Connection Permit")
+            if permit_fdot_driveway:
+                permits.append("FDOT Driveway Connection Permit")
+            if permit_fdot_utility:
+                permits.append("FDOT Utility Connection Permit")
+            if permit_fema:
+                permits.append("FEMA")
+            
             client_info = {
                 'name': client_name,
                 'contact': contact_person,
@@ -802,7 +876,9 @@ if st.button("🚀 Generate Proposal Document", type="primary", disabled=not can
                 'description': project_description,
                 'county': county,
                 'city': city,
-                'parcel_id': parcel_id
+                'parcel_id': parcel_id,
+                'fee_type': fee_type,
+                'permits': permits
             }
             
             buffer = BytesIO()
